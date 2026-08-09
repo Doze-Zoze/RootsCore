@@ -1,0 +1,5 @@
+displayName = Roots Core
+author = dozezoze
+version = 0.1
+homepage = https://discord.gg/ZXNsMPZS6x
+includeSource = true

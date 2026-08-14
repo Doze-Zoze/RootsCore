@@ -44,7 +44,7 @@ namespace RootsCore
         public static Predicate<(Player, Item)>[] ShouldResetManaRegen = ItemID.Sets.Factory
             .CreateNamedSet("ShouldResetManaRegen")
             .Description("Predicate to decide when an item should reset mana regeneration")
-            .RegisterCustomSet<Predicate<(Player, Item)>>(x => x.Item1.statMana >= (int)(x.Item2.mana * x.Item1.manaCost));
+            .RegisterCustomSet<Predicate<(Player, Item)>>(null);
     }
 
     [ReinitializeDuringResizeArrays]

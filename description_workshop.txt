@@ -1,1 +1,8 @@
-This description will show up on the steam page, check out https://steamcommunity.com/comment/Guide/formattinghelp.
+Roots Core is a library mod that contains a lot of the core systems of Roots, allowing other mod developers to use those systems with ease
+
+This includes:
+- AI Overrides
+- Non-tile physical arenas
+- Systems to allow more versatile use of Mana, such as conditions for when an item should reset Mana Regeneration, or if an item should consume mana on swing
+- The ability to disable vanilla effects on accessories or gear, making reworks much easier
+- ID sets for documenting Mana-spawned projectiles and Mana Star pickups

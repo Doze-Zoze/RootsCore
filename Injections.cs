@@ -19,6 +19,12 @@ namespace RootsCore
             On_Player.GrantArmorBenefits += DisableArmorPieceBuffs;
             On_Player.UpdateArmorSets += DisableArmorSetBonus;
 
+            // see ArenaBoxSystem.cs for methods
+            On_Projectile.AI_007_GrapplingHooks += AllowHooksToGrabArenabox;
+            On_Collision.SolidCollision_Vector2_int_int += ArenaCollision_Vector2_int_int;
+            On_Collision.SolidCollision_Vector2_int_int_bool += ArenaCollision_Vector2_int_int_bool;
+            On_Collision.TileCollision += ArenaCollision_TileCollision;
+
         }
 
 
@@ -114,7 +120,7 @@ namespace RootsCore
         }
         private void DisableManaRegenDelayWhenOutOfMana(On_Player.orig_ItemCheck_ApplyManaRegenDelay orig, Player self, Item sItem)
         {
-            if (self.GetModPlayer<RootsCorePlayer>().forceManaRegenStop || ItemSets.ShouldResetManaRegen[sItem.type]((self, sItem)))
+            if (self.GetModPlayer<RootsCorePlayer>().forceManaRegenStop || (ItemSets.ShouldResetManaRegen[sItem.type]?.Invoke((self, sItem)) ?? self.statMana >= (int)(sItem.mana * self.manaCost) ))
             {
                 orig(self, sItem);
                 self.GetModPlayer<RootsCorePlayer>().forceManaRegenStop = true;

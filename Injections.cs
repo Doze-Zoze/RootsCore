@@ -133,15 +133,4 @@ namespace RootsCore
             return orig(self, sItem, canUse);
         }
     }
-
-    public class RootsCorePlayer : ModPlayer
-    {
-        public bool forceManaRegenStop = false;
-        public override void ResetEffects()
-        {
-            if (Player.itemTime <= 1)
-                forceManaRegenStop = false;
-        }
-
-    }
 }

@@ -2,7 +2,6 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using MonoMod.RuntimeDetour;
 using System.Collections.Generic;
-using System.Reflection;
 using Terraria;
 using Terraria.ID;
 using Terraria.ModLoader;
@@ -11,7 +10,7 @@ namespace RootsCore
 {
     public partial class RootsCore : Mod
     {
-        void LoadEdits()
+        private void LoadEdits()
         {
             On_Player.ItemCheck_PayMana += AllowItemUsageWithImproperMana;
             On_Player.ItemCheck_ApplyManaRegenDelay += DisableManaRegenDelayWhenOutOfMana;
@@ -20,35 +19,33 @@ namespace RootsCore
             On_Player.UpdateArmorSets += DisableArmorSetBonus;
 
             // see ArenaBoxSystem.cs for methods
-            On_Projectile.AI_007_GrapplingHooks += AllowHooksToGrabArenabox;
+            On_Projectile.AI_007_GrapplingHooks += AllowHooksToGrabArenaBox;
             On_Collision.SolidCollision_Vector2_int_int += ArenaCollision_Vector2_int_int;
             On_Collision.SolidCollision_Vector2_int_int_bool += ArenaCollision_Vector2_int_int_bool;
             On_Collision.TileCollision += ArenaCollision_TileCollision;
 
         }
 
-
-        private static List<Hook> Hooks = new();
+        private static List<Hook> _hooks = [];
         public override void Unload()
         {
-            for (int i = 0; i < Hooks.Count; i++)
+            for (int i = 0; i < _hooks.Count; i++)
             {
-                Hooks[i]?.Dispose();
-                Hooks[i] = null;
+                _hooks[i]?.Dispose();
+                _hooks[i] = null;
             }
-            Hooks = new();
+            _hooks = [];
         }
 
-
-
         private delegate bool orig_ModNPC_PreDraw(ModNPC self, SpriteBatch spriteBatch, Vector2 screenPos, Color drawColor);
-        private delegate void orig_ModNPC_PostDraw(ModNPC self, SpriteBatch spriteBatch, Vector2 screenPos, Color drawColor);
         private bool PreDraw(orig_ModNPC_PreDraw orig, ModNPC self, SpriteBatch spriteBatch, Vector2 screenPos, Color drawColor)
         {
             if (AIOverrideSystem.Get(self.Type)?.CurrentAiOverride?.Replace_Draw ?? false)
                 return false;
             return orig(self, spriteBatch, screenPos, drawColor);
         }
+        
+        private delegate void orig_ModNPC_PostDraw(ModNPC self, SpriteBatch spriteBatch, Vector2 screenPos, Color drawColor);
         private void PostDraw(orig_ModNPC_PostDraw orig, ModNPC self, SpriteBatch spriteBatch, Vector2 screenPos, Color drawColor)
         {
             if (AIOverrideSystem.Get(self.Type)?.CurrentAiOverride?.Replace_Draw ?? false)
@@ -78,7 +75,9 @@ namespace RootsCore
 
         private void DisableArmorSetBonus(On_Player.orig_UpdateArmorSets orig, Player self, int i)
         {
-            if (ItemSets.DontUseVanillaSetBonus[self.armor[0].type] || ItemSets.DontUseVanillaSetBonus[self.armor[2].type] || ItemSets.DontUseVanillaSetBonus[self.armor[2].type])
+            if (ItemSets.DontUseVanillaSetBonus[self.armor[0].type] ||
+                ItemSets.DontUseVanillaSetBonus[self.armor[2].type] ||
+                ItemSets.DontUseVanillaSetBonus[self.armor[2].type])
             {
                 ItemLoader.UpdateArmorSet(self, self.armor[0], self.armor[1], self.armor[2]);
                 return;
@@ -99,7 +98,7 @@ namespace RootsCore
                 if (armorPiece.shieldSlot > 0)
                     self.hasRaisableShield = true;
 
-                if (armorPiece.type == ItemID.AmberRobe || (armorPiece.type >= ItemID.AmethystRobe && armorPiece.type <= ItemID.DiamondRobe))
+                if (armorPiece.type is ItemID.AmberRobe or >= ItemID.AmethystRobe and <= ItemID.DiamondRobe)
                     self.hasGemRobe = true;
 
                 ItemLoader.UpdateEquip(armorPiece, self);
@@ -116,31 +115,28 @@ namespace RootsCore
                 return;
             }
             orig(self, currentItem, hideVisual);
-            return;
         }
         private void DisableManaRegenDelayWhenOutOfMana(On_Player.orig_ItemCheck_ApplyManaRegenDelay orig, Player self, Item sItem)
         {
-            if (self.GetModPlayer<RootsCorePlayer>().forceManaRegenStop || (ItemSets.ShouldResetManaRegen[sItem.type]?.Invoke((self, sItem)) ?? self.statMana >= (int)(sItem.mana * self.manaCost) ))
-            {
-                orig(self, sItem);
-                self.GetModPlayer<RootsCorePlayer>().forceManaRegenStop = true;
-            }
+            if (!self.GetModPlayer<RootsCorePlayer>().ForceManaRegenStop &&
+                !(ItemSets.ShouldResetManaRegen[sItem.type]?.Invoke((self, sItem)) 
+                  ?? self.statMana >= (int)(sItem.mana * self.manaCost))) return;
+            orig(self, sItem);
+            self.GetModPlayer<RootsCorePlayer>().ForceManaRegenStop = true;
         }
         private bool AllowItemUsageWithImproperMana(On_Player.orig_ItemCheck_PayMana orig, Player self, Item sItem, bool canUse)
         {
-            if (ItemSets.DontConsumeManaOnSwing[sItem.type])
-                return canUse;
-            return orig(self, sItem, canUse);
+            return ItemSets.DontConsumeManaOnSwing[sItem.type] ? canUse : orig(self, sItem, canUse);
         }
     }
 
     public class RootsCorePlayer : ModPlayer
     {
-        public bool forceManaRegenStop = false;
+        public bool ForceManaRegenStop = false;
         public override void ResetEffects()
         {
             if (Player.itemTime <= 1)
-                forceManaRegenStop = false;
+                ForceManaRegenStop = false;
         }
 
     }

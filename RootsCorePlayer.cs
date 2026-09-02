@@ -7,12 +7,12 @@ namespace RootsCore
         /// <summary>
         /// Used to detect what swing a weapon is doing.
         /// </summary>
-        public int swingCounter = 0;
-        public bool forceManaRegenStop = false;
+        public int SwingCounter;
+        public bool ForceManaRegenStop;
         public override void ResetEffects()
         {
             if (Player.itemTime <= 1)
-                forceManaRegenStop = false;
+                ForceManaRegenStop = false;
         }
 
     }

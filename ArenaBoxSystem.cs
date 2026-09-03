@@ -3,9 +3,9 @@ using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using ReLogic.Content;
 using Terraria;
 using Terraria.Audio;
+using Terraria.GameContent;
 using Terraria.Graphics.Shaders;
 using Terraria.ID;
 using Terraria.ModLoader;
@@ -17,8 +17,6 @@ namespace RootsCore
         public static List<Box> ActiveBoxes { get; set; } = [];
         public class Box
         {
-            private static Asset<Texture2D> LineTexture => field ??= ModContent.Request<Texture2D>("RootsCore/WhitePixel");
-            
             public Func<bool> RemovalCondition = () => false;
 
             public Vector2 Position;
@@ -91,7 +89,7 @@ namespace RootsCore
                     float rotation = (end - start).ToRotation();
                     Vector2 scale = new Vector2(Vector2.Distance(start, end), thickness);
 
-                    Main.spriteBatch.Draw(LineTexture.Value, start, null, color, rotation, LineTexture.Size() * Vector2.UnitY * 0.5f, scale, SpriteEffects.None, 0f);
+                    Main.spriteBatch.Draw(TextureAssets.MagicPixel.Value, start, null, color, rotation, TextureAssets.MagicPixel.Size() * Vector2.UnitY * 0.5f, scale, SpriteEffects.None, 0f);
                 }
             }
 

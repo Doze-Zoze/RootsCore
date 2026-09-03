@@ -51,19 +51,19 @@ namespace RootsCore.ContentBaseClasses
         }
     }
 
-    public abstract class BaseCustomSwingProjectile : ModProjectile
+    public abstract class BaseCustomSwingProjectile<T> : ModProjectile where T : BaseCustomSwingProjectile<T>
     {
         /// <summary>
         /// Individual state the weapon can be in (i.e. startup, swing, cooldown)
         /// By default, instances of this class should be included in StateList for them to be used by the weapon
         /// When defining instances of this class, override parameters in the object initializer
         /// </summary>
-        public class AttackState(int time)
+        public class AttackState
         {
             /// <summary>
             /// The time that this state takes to finish.
             /// </summary>
-            public required int Time { get; init; } = Math.Max(time, 1);
+            public required int Time { get; init; }
             /// <summary>
             /// The amount of after images that follow the weapon during this state.
             /// </summary>
@@ -123,33 +123,23 @@ namespace RootsCore.ContentBaseClasses
             /// Function that decides the current offset angle of the swing.
             /// </summary>
             /// <returns>Angle in radians</returns>
-            public Func<float> SwingOffsetAngle { get; init; } = null;
+            public Func<T, float> SwingOffsetAngle { get; init; } = null;
 
             /// <summary>
             /// Function that runs during the state's timer that can override any AI behaviour
             /// Runs after the base AdditionalAI()
             /// </summary>
-            public Action AdditionalAI { get; init; } = () => {};
+            public Action<T> AdditionalAI { get; init; } = (_) => {};
 
             /// <summary>
             /// Function that runs once when a state starts
             /// Looped states will still only run this once
             /// </summary>
-            public Action Startup { get; init; } = () => {};
+            public Action<T> Startup { get; init; } = (_) => {};
         }
         
         #region Overrideable Fields
 
-        /// <summary>
-        /// The width, in degrees, of the sword swing.
-        /// Defaults to 180
-        /// </summary>
-        public float SwingWidth => State.SwingWidth;
-        /// <summary>
-        /// If the swing should alternate directions each use.
-        /// Defaults to true
-        /// </summary>
-        public bool AlternateSwings => State.AlternateSwings;
         /// <summary>
         /// How far the held sword should be offset from the player
         /// Defaults to 0
@@ -170,23 +160,13 @@ namespace RootsCore.ContentBaseClasses
         /// Defaults to 0
         /// </summary>
         public virtual int AfterImageCount { get; set; }
-
-        /// <summary>
-        /// Whether this should get attack speed bonuses for its class
-        /// Defaults to TRUE
-        /// </summary>
-        public bool UseAttackSpeed => State.AffectedBySpeed;
+        
         /// <summary>
         /// Whether this should get melee size bonuses (Titan Glove)
         /// Defaults to TRUE
         /// </summary>
         public virtual bool UseMeleeSize { get; set; } = true;
 
-        /// <summary>
-        /// Speed at which the projectile should rotate to match the mouse angle during StartupTime.
-        /// Set to 0 to disable.
-        /// </summary>
-        public float RotationSpeed => State.RotationSpeed;
         /// <summary>
         /// The length (from the player) of the projectile's line collision.
         /// This helps to prevent blind spots.
@@ -200,6 +180,26 @@ namespace RootsCore.ContentBaseClasses
 
         #region Fields
 
+        /// <summary>
+        /// The width, in degrees, of the sword swing.
+        /// Defaults to 180
+        /// </summary>
+        public float SwingWidth => State.SwingWidth;
+        /// <summary>
+        /// If the swing should alternate directions each use.
+        /// Defaults to true
+        /// </summary>
+        public bool AlternateSwings => State.AlternateSwings;
+        /// <summary>
+        /// Whether this should get attack speed bonuses for its class
+        /// Defaults to TRUE
+        /// </summary>
+        public bool UseAttackSpeed => State.AffectedBySpeed;
+        /// <summary>
+        /// Speed at which the projectile should rotate to match the mouse angle during StartupTime.
+        /// Set to 0 to disable.
+        /// </summary>
+        public float RotationSpeed => State.RotationSpeed;
         /// <summary>
         /// Angle of the swing. By default, gets set to mouse angle. Can be set in Spawn(IEntitySource) for fixed angles.
         /// </summary>
@@ -239,13 +239,13 @@ namespace RootsCore.ContentBaseClasses
         /// <summary>
         /// The ratio of the State's Timer to its total time
         /// </summary>
-        public float StateCompletion => StateTimer / (float)StateMaxTime - 1;
+        public float StateCompletion => StateTimer / (float)(StateMaxTime - 1);
         /// <summary>
         /// The list of all states this weapon contains
         /// By default, when one state completes (i.e. StateTimer hits StateMaxTime),
         /// it moves to the next AttackState in the list
         /// </summary>
-        public abstract List<AttackState> StateList { get; set; }
+        public abstract List<AttackState> StateList { get; }
         
         #endregion
         
@@ -281,6 +281,7 @@ namespace RootsCore.ContentBaseClasses
             if (UsesBaseItem)
             {
                 Projectile.width = Projectile.height = Math.Max(BaseItem.height, BaseItem.width);
+                Projectile.DamageType = BaseItem.DamageType;
             }
             Projectile.friendly = true;
             Projectile.penetrate = -1;
@@ -291,14 +292,20 @@ namespace RootsCore.ContentBaseClasses
             Projectile.DamageType = DamageClass.Generic;
             Projectile.ContinuouslyUpdateDamageStats = true;
             Projectile.tileCollide = false;
+            Projectile.MaxUpdates = 5;
+            Defaults();
+        }
+        public override void SetStaticDefaults()
+        {
+
             ProjectileID.Sets.TrailingMode[Projectile.type] = 2;
             ProjectileID.Sets.TrailCacheLength[Projectile.type] = 100;
-            Defaults();
         }
         /// <summary>
         /// This hook runs at the beginning of AI the first time through.
+        /// Do not override unless you know what you're doing
         /// </summary>
-        private void FakeOnSpawn()
+        public virtual void FakeOnSpawn()
         {
             Angle = (Player.MountedCenter - Player.MouseWorld).SafeNormalize(Vector2.One);
             SetState(StateList.First());
@@ -332,7 +339,7 @@ namespace RootsCore.ContentBaseClasses
             float adjust = MathHelper.ToRadians(225);
             
             if (RotationSpeed != 0)
-                Angle = Vector2.Lerp(Angle, (Player.MountedCenter - Player.MouseWorld).SafeNormalize(Vector2.One), RotationSpeed);
+                Angle = Vector2.Lerp(Angle, (Player.MountedCenter - Player.MouseWorld).SafeNormalize(Vector2.One), RotationSpeed).SafeNormalize(Vector2.One);
             if (Angle.X < 0)
             {
                 Player.direction = 1;
@@ -367,12 +374,12 @@ namespace RootsCore.ContentBaseClasses
                 }
             }
 
-            float swingAngle = State.SwingOffsetAngle?.Invoke() ??
+            float swingAngle = State.SwingOffsetAngle?.Invoke((T)this) ??
                                MathHelper.SmoothStep(-SwingWidth / 2, SwingWidth / 2, StateCompletion);
             Projectile.Center = armCenter - (Angle * OffsetDistance * (1 + (Projectile.scale - 1) * 0.75f)).RotatedBy(Projectile.spriteDirection * swingAngle);
             Projectile.rotation = Angle.RotatedBy(Projectile.spriteDirection * swingAngle).ToRotation() + adjust;
             AdditionalAI();
-            State.AdditionalAI();
+            State.AdditionalAI((T)this);
             if (!Projectile.active)
                 return;
             OldPlayerOffset = Projectile.Center - Player.MountedCenter;
@@ -411,14 +418,15 @@ namespace RootsCore.ContentBaseClasses
             }
             Vector2 armDir = armCenter - Projectile.Center;
             armDir.Y *= Player.gravDir;
+            Player.heldProj = Projectile.whoAmI;
             Player.SetCompositeArmFront(true, Player.CompositeArmStretchAmount.Full, armDir.ToRotation() + MathHelper.ToRadians(90));
             OldScale.Insert(0, Projectile.scale);
         }
         public override bool PreDraw(ref Color lightColor)
         {
+            Texture2D texture = TextureAssets.Projectile[Type].Value;
             if (AfterImageCount > 0)
             {
-                Texture2D texture = TextureAssets.Projectile[Type].Value ;
                 for (int i = 0; i < OldProjectileRot.Count; i++)
                 {
                     var col = Projectile.Opacity * (i / (float)AfterImageCount) * 0.1f;
@@ -427,8 +435,10 @@ namespace RootsCore.ContentBaseClasses
                         Projectile.spriteDirection == 1 ? SpriteEffects.None : SpriteEffects.FlipHorizontally);
                 }
             }
-            Player.heldProj = Projectile.whoAmI;
-            return true;
+            Main.EntitySpriteDraw(texture, Projectile.Center - Main.screenPosition, texture.Frame(),
+                lightColor, Projectile.rotation, texture.Size() * 0.5f, Projectile.scale,
+                Projectile.spriteDirection == 1 ? SpriteEffects.None : SpriteEffects.FlipHorizontally);
+            return false;
         }
         public override void ModifyDamageHitbox(ref Rectangle hitbox)
         {
@@ -519,7 +529,7 @@ namespace RootsCore.ContentBaseClasses
             
             if (shouldStart)
             {
-                State.Startup();
+                State.Startup((T)this);
                 if (State.Sound != null)
                     SoundEngine.PlaySound((SoundStyle)State.Sound, Player.Center);
             }

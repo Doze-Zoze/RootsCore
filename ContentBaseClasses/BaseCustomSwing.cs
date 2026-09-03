@@ -1,10 +1,10 @@
 ﻿using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
-using ReLogic.Content;
 using RootsCore.Extensions;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Terraria;
 using Terraria.Audio;
 using Terraria.GameContent;
@@ -29,10 +29,8 @@ namespace RootsCore.ContentBaseClasses
                 ItemID.Sets.ItemsThatAllowRepeatedRightClick[Type] = true;
         }
 
-        public override bool MeleePrefix()
-        {
-            return SizeModifiers;
-        }
+        public override bool MeleePrefix() => SizeModifiers;
+
         public override void SetDefaults()
         {
             Item.noMelee = true;
@@ -52,35 +50,117 @@ namespace RootsCore.ContentBaseClasses
             return base.CanUseItem(player);
         }
     }
+
     public abstract class BaseCustomSwingProjectile : ModProjectile
     {
+        /// <summary>
+        /// Individual state the weapon can be in (i.e. startup, swing, cooldown)
+        /// By default, instances of this class should be included in StateList for them to be used by the weapon
+        /// When defining instances of this class, override parameters in the object initializer
+        /// </summary>
+        public class AttackState(int time)
+        {
+            /// <summary>
+            /// The time that this state takes to finish.
+            /// </summary>
+            public required int Time { get; init; } = Math.Max(time, 1);
+            /// <summary>
+            /// The amount of after images that follow the weapon during this state.
+            /// </summary>
+            public int AfterImageCount { get; init; }
+            /// <summary>
+            /// The speed at which the weapon's angle moves towards the mouse.
+            /// Set to 0 to disable this behaviour.
+            /// </summary>
+            public float RotationSpeed { get; init; }
+            /// <summary>
+            /// The sound that plays at the start of the state.
+            /// Set to null to disable this behaviour.
+            /// </summary>
+            public SoundStyle? Sound { get; init; } = null;
+
+            /// <summary>
+            /// The base angle of the weapon during this state.
+            /// </summary>
+            public Vector2? Angle { get; init; } = null;
+
+            /// <summary>
+            /// The width, in radians, of the sword swing.
+            /// </summary>
+            public float SwingWidth { get; init; } = MathHelper.Pi;
+            /// <summary>
+            /// Distance in pixels of the projectile to the player
+            /// </summary>
+            public int OffsetDistance { get; init; }
+
+            /// <summary>
+            /// Whether this state's timer is affected by attack speed.
+            /// </summary>
+            public bool AffectedBySpeed { get; init; } = true;
+
+            /// <summary>
+            /// Whether this state deals damage
+            /// </summary>
+            public bool CanDamage { get; init; } = true;
+            /// <summary>
+            /// Whether the angle in this state alternates with every use of the weapon.
+            /// </summary>
+            public bool AlternateSwings { get; init; }
+            /// <summary>
+            /// Whether this state loops at the end of its timer.
+            /// The state will not advance without manual intervention if this is true.
+            /// </summary>
+            public bool Loops { get; init; }
+
+            /// <summary>
+            /// Whether this state is reached when the previous state ends.
+            /// This state will be skipped if it is attempted to be reach by any function (besides manually setting state.)
+            /// This state will be ignored if it is at the end of the statelist, and the weapon will end before it is reached.
+            /// </summary>
+            public bool IsTransitionedTo { get; init; } = true;
+
+            /// <summary>
+            /// Function that decides the current offset angle of the swing.
+            /// </summary>
+            /// <returns>Angle in radians</returns>
+            public Func<float> SwingOffsetAngle { get; init; } = null;
+
+            /// <summary>
+            /// Function that runs during the state's timer that can override any AI behaviour
+            /// Runs after the base AdditionalAI()
+            /// </summary>
+            public Action AdditionalAI { get; init; } = () => {};
+
+            /// <summary>
+            /// Function that runs once when a state starts
+            /// Looped states will still only run this once
+            /// </summary>
+            public Action Startup { get; init; } = () => {};
+        }
+        
         #region Overrideable Fields
+
         /// <summary>
         /// The width, in degrees, of the sword swing.
         /// Defaults to 180
         /// </summary>
-        public virtual int SwingWidth { get; set; } = 180;
-        /// <summary>
-        /// How many frames the sword swing should take.
-        /// Defaults to 20
-        /// </summary>
-        public virtual int SwingTime { get; set; } = 20;
+        public float SwingWidth => State.SwingWidth;
         /// <summary>
         /// If the swing should alternate directions each use.
         /// Defaults to true
         /// </summary>
-        public virtual bool AlternateSwings { get; set; } = true;
+        public bool AlternateSwings => State.AlternateSwings;
         /// <summary>
         /// How far the held sword should be offset from the player
         /// Defaults to 0
         /// </summary>
-        public virtual int OffsetDistance { get; set; } = 0;
+        public virtual int OffsetDistance { get; set; }
         /// <summary>
         /// What item this projectile uses as a base.
         /// </summary>
         public virtual Item BaseItem { get; set; }
         /// <summary>
-        /// Whether or not this projectile uses a base item at all.
+        /// Whether this projectile uses a base item at all.
         /// Defaults to true.
         /// </summary>
         public virtual bool UsesBaseItem { get; set; } = true;
@@ -89,49 +169,27 @@ namespace RootsCore.ContentBaseClasses
         /// Length of after-image trail left by the projectile.
         /// Defaults to 0
         /// </summary>
-        public virtual int AfterImageLength { get; set; } = 0;
+        public virtual int AfterImageCount { get; set; }
 
         /// <summary>
-        /// Whether or not this should get attack speed bonuses for its class
+        /// Whether this should get attack speed bonuses for its class
         /// Defaults to TRUE
         /// </summary>
-        public virtual bool UseAttackSpeed { get; set; } = true;
-
+        public bool UseAttackSpeed => State.AffectedBySpeed;
         /// <summary>
-        /// Whether or not this should get melee size bonuses (Titan Glove)
+        /// Whether this should get melee size bonuses (Titan Glove)
         /// Defaults to TRUE
         /// </summary>
         public virtual bool UseMeleeSize { get; set; } = true;
 
         /// <summary>
-        /// How long before the weapon should begin it's actual swing once used
-        /// </summary>
-        public virtual int StartupTime { get; set; }
-        /// <summary>
-        /// How long the weapon should "cool down" after swinging before ending the item use
-        /// </summary>
-        public virtual int CooldownTime { get; set; }
-        /// <summary>
         /// Speed at which the projectile should rotate to match the mouse angle during StartupTime.
         /// Set to 0 to disable.
-        /// Defaults to 0.5f
         /// </summary>
-        public virtual float RotateInStartup { get; set; } = 0.5f;
-
-        /// <summary>
-        /// Speed at which the projectile should rotate to match the mouse angle during Cooldown.
-        /// Set to 0 to disable.
-        /// Defaults to 0.5f
-        /// </summary>
-        public virtual float RotateInCooldown { get; set; } = 0.5f;
-
-        /// <summary>
-        /// What sound to use when the sword begins the actual swing (after startup frames)
-        /// </summary>
-        public virtual SoundStyle? UseSound { get; set; } = null;
+        public float RotationSpeed => State.RotationSpeed;
         /// <summary>
         /// The length (from the player) of the projectile's line collision.
-        /// This helps to prevent blindspots.
+        /// This helps to prevent blind spots.
         /// Defaults to 0
         /// </summary>
         public virtual float LineCollisionLength { get; set; }
@@ -152,31 +210,48 @@ namespace RootsCore.ContentBaseClasses
         /// </summary>
         public Vector2 OldPlayerOffset { get; set; }
         /// <summary>
-        /// Timer for the projectile's entire lifespan
+        /// Timer since the projectile was created
         /// </summary>
-        public int TotalTimer { get; set; }
-        /// <summary>
-        /// Timer for the projectile's swing animation
-        /// </summary>
-        public int SwingTimer { get; set; }
-        public float baseScale;
+        public int Timer { get; set; }
+        public float BaseScale;
         /// <summary>
         /// Old weapon scales used to track for trail drawing
         /// </summary>
-        public List<float> oldScale = [];
-        public List<float> oldProjectileRot = [];
-        public List<Vector2> oldProjectilePos = [];
-        public int ExistsTime = 20;
-        public bool InStartup => TotalTimer < StartupTime;
-        public bool InCooldown => TotalTimer > CooldownStartFrame;
-        public bool InSwing => !(InStartup || InCooldown);
-        public int CooldownStartFrame => SwingTime + StartupTime;
-        public int CooldownTimer => TotalTimer - CooldownStartFrame;
-        public float StartupCompletion => TotalTimer / (float)StartupTime;
-        public float SwingCompletion => SwingTimer / (float)SwingTime;
-        public float CooldownCompletion => CooldownTimer / (float)CooldownTime;
-        private bool hasFakedOnSpawn = false;
+        public List<float> OldScale = [];
+        public List<float> OldProjectileRot = [];
+        public List<Vector2> OldProjectilePos = [];
+        private bool _hasFakedOnSpawn;
 
+        /// <summary>
+        /// The current State of the weapon
+        /// </summary>
+        public AttackState State { get; set; }
+        /// <summary>
+        /// The total time the current state will take to finish
+        /// Gets multiplied by Projectile.MaxUpdates (and attack speed if relevant) automatically
+        /// </summary>
+        public int StateMaxTime { get; set; }
+        /// <summary>
+        /// The current timer (0 -> State.Time) of the current State
+        /// </summary>
+        public int StateTimer { get; set; }
+
+        /// <summary>
+        /// The ratio of the State's Timer to its total time
+        /// </summary>
+        public float StateCompletion => StateTimer / (float)StateMaxTime - 1;
+        /// <summary>
+        /// The list of all states this weapon contains
+        /// By default, when one state completes (i.e. StateTimer hits StateMaxTime),
+        /// it moves to the next AttackState in the list
+        /// </summary>
+        public abstract List<AttackState> StateList { get; set; }
+        
+        #endregion
+        
+        #region Helpers
+        public Player Player => Main.player[Projectile.owner];
+        public RootsCorePlayer ModPlayer => Player.GetModPlayer<RootsCorePlayer>();
         #endregion
 
         #region Overridable Methods  
@@ -192,14 +267,6 @@ namespace RootsCore.ContentBaseClasses
         /// happens after SetDefaults. Use as not to cancel default SetDefaults behavior.
         /// </summary>
         public virtual void Defaults() { }
-        /// <summary>
-        /// Returns the swing offset from the center angle in radians. Automatically will be inverted if AlternateSwings is enabled.
-        /// </summary>
-        /// <returns></returns>
-        public virtual float SwingFunction()
-        {
-            return MathHelper.ToRadians(MathHelper.SmoothStep(-SwingWidth / 2, SwingWidth / 2, SwingTimer / (float)SwingTime));
-        }
         #endregion
 
         #region Overrides
@@ -210,7 +277,7 @@ namespace RootsCore.ContentBaseClasses
         /// </summary>
         public override void SetDefaults()
         {
-            Projectile.timeLeft = SwingTime * 2;
+            Projectile.timeLeft = 5;
             if (UsesBaseItem)
             {
                 Projectile.width = Projectile.height = Math.Max(BaseItem.height, BaseItem.width);
@@ -221,7 +288,7 @@ namespace RootsCore.ContentBaseClasses
             Projectile.usesLocalNPCImmunity = true;
             Projectile.extraUpdates = 0;
             Projectile.aiStyle = -2;
-            Projectile.DamageType = ModLoader.GetMod("CalamityMod").Find<DamageClass>("TrueMeleeDamageClass");
+            Projectile.DamageType = DamageClass.Generic;
             Projectile.ContinuouslyUpdateDamageStats = true;
             Projectile.tileCollide = false;
             ProjectileID.Sets.TrailingMode[Projectile.type] = 2;
@@ -233,57 +300,20 @@ namespace RootsCore.ContentBaseClasses
         /// </summary>
         private void FakeOnSpawn()
         {
-            Player player = Main.player[Projectile.owner];
-            Angle = (player.MountedCenter - player.MouseWorld).SafeNormalize(Vector2.One);
-            Projectile.velocity = Vector2.Zero;
-            if (Angle.X < 0)
-            {
-                player.direction = 1;
-                Projectile.spriteDirection = 1 * (int)player.gravDir;
-            }
-            else
-            {
-                player.direction = -1;
-                Projectile.spriteDirection = -1 * (int)player.gravDir;
-            }
-            if (AlternateSwings && player.GetModPlayer<RootsCorePlayer>().swingCounter % 2 == 1)
-            {
-                Projectile.spriteDirection *= -1;
-            }
+            Angle = (Player.MountedCenter - Player.MouseWorld).SafeNormalize(Vector2.One);
+            SetState(StateList.First());
+            
             if (AlternateSwings)
-            {
-                player.GetModPlayer<RootsCorePlayer>().swingCounter++;
-            }
-            SwingTime = Main.player[Projectile.owner].HeldItem.useTime;
+                ModPlayer.SwingCounter++;
+            
             Spawn();
-            StartupTime *= Projectile.MaxUpdates;
-            CooldownTime *= Projectile.MaxUpdates;
-            SwingTime *= Projectile.MaxUpdates;
-            if (UseAttackSpeed)
-            {
-                var speed = Main.player[Projectile.owner].GetTotalAttackSpeed(Projectile.DamageType);
-                if (speed > 3f)
-                    speed = 3f;
-
-                if (speed != 0f)
-                    speed = 1f / speed;
-
-                SwingTime = (int)(SwingTime * speed);
-                if (SwingTime < 1)
-                {
-                    SwingTime = 1;
-                }
-                StartupTime = (int)(StartupTime * speed);
-                CooldownTime = (int)(CooldownTime * speed);
-            }
+            
             if (UseMeleeSize)
             {
-                Projectile.scale *= player.GetMeleeScale();
+                Projectile.scale *= Player.GetMeleeScale();
             }
-            baseScale = Projectile.scale;
-            ExistsTime = SwingTime + StartupTime + CooldownTime;
-            Projectile.timeLeft = ExistsTime * 2;
-            Projectile.netUpdate = true;
+            BaseScale = Projectile.scale;
+            Projectile.timeLeft = 5;
         }
 
         /// <summary>
@@ -293,101 +323,111 @@ namespace RootsCore.ContentBaseClasses
         /// </summary>
         public override void AI()
         {
-            if (!hasFakedOnSpawn)
+            if (!_hasFakedOnSpawn)
             {
                 FakeOnSpawn();
-                hasFakedOnSpawn = true;
+                _hasFakedOnSpawn = true;
             }
-            Player player = Main.player[Projectile.owner];
-            Projectile.gfxOffY = player.gfxOffY;
-            RootsCorePlayer modplayer = player.GetModPlayer<RootsCorePlayer>();
-            float adust = MathHelper.ToRadians(225);
-            if (TotalTimer < StartupTime || TotalTimer > StartupTime + SwingTime)
+            Projectile.gfxOffY = Player.gfxOffY;
+            float adjust = MathHelper.ToRadians(225);
+            
+            if (RotationSpeed != 0)
+                Angle = Vector2.Lerp(Angle, (Player.MountedCenter - Player.MouseWorld).SafeNormalize(Vector2.One), RotationSpeed);
+            if (Angle.X < 0)
             {
-                if (InStartup)
-                    Angle = Vector2.Lerp(Angle, (player.MountedCenter - player.MouseWorld).SafeNormalize(Vector2.One), RotateInStartup);
-                if (InCooldown)
-                    Angle = Vector2.Lerp(Angle, (player.MountedCenter - player.MouseWorld).SafeNormalize(Vector2.One), RotateInCooldown);
-                if (Angle.X < 0)
-                {
-                    player.direction = 1;
-                    Projectile.spriteDirection = 1 * (int)player.gravDir;
-                }
-                else
-                {
-                    player.direction = -1;
-                    Projectile.spriteDirection = -1 * (int)player.gravDir;
-                }
-                if (AlternateSwings && player.GetModPlayer<RootsCorePlayer>().swingCounter % 2 == 1)
-                {
-                    Projectile.spriteDirection *= -1;
-                }
+                Player.direction = 1;
+                Projectile.spriteDirection = 1 * (int)Player.gravDir;
             }
+            else
+            {
+                Player.direction = -1;
+                Projectile.spriteDirection = -1 * (int)Player.gravDir;
+            }
+            
+            if (AlternateSwings && ModPlayer.SwingCounter % 2 == 1)
+            {
+                Projectile.spriteDirection *= -1;
+            }
+            
             if (Projectile.spriteDirection == -1)
             {
-                adust = MathHelper.ToRadians(-45);
+                adjust = MathHelper.ToRadians(-45);
             }
-            Vector2 armCenter = player.MountedCenter - new Vector2(5 * player.direction, 2);
-            if (AfterImageLength > 0)
+            
+            Vector2 armCenter = Player.MountedCenter - new Vector2(5 * Player.direction, 2);
+            
+            if (AfterImageCount > 0)
             {
-                oldProjectileRot.Add(Projectile.rotation);
-                oldProjectilePos.Add(Projectile.Center + new Vector2(0, Projectile.gfxOffY));
-                if (oldProjectileRot.Count > AfterImageLength)
+                OldProjectileRot.Add(Projectile.rotation);
+                OldProjectilePos.Add(Projectile.Center + new Vector2(0, Projectile.gfxOffY));
+                if (OldProjectileRot.Count > AfterImageCount)
                 {
-                    oldProjectileRot.RemoveAt(0);
-                    oldProjectilePos.RemoveAt(0);
+                    OldProjectileRot.RemoveAt(0);
+                    OldProjectilePos.RemoveAt(0);
                 }
             }
-            if (InSwing && SwingTimer == 1 && UseSound != null)
-            {
-                SoundEngine.PlaySound((SoundStyle)UseSound, player.Center);
-            }
-            var angle2 = (AlternateSwings && modplayer.swingCounter % 2 == 1 ? SwingFunction() : SwingFunction());
-            Projectile.Center = armCenter - (Angle * OffsetDistance * (1 + (Projectile.scale - 1) * 0.75f)).RotatedBy(Projectile.spriteDirection * angle2);
-            Projectile.rotation = Angle.RotatedBy(Projectile.spriteDirection * angle2).ToRotation() + adust;
+
+            float swingAngle = State.SwingOffsetAngle?.Invoke() ??
+                               MathHelper.SmoothStep(-SwingWidth / 2, SwingWidth / 2, StateCompletion);
+            Projectile.Center = armCenter - (Angle * OffsetDistance * (1 + (Projectile.scale - 1) * 0.75f)).RotatedBy(Projectile.spriteDirection * swingAngle);
+            Projectile.rotation = Angle.RotatedBy(Projectile.spriteDirection * swingAngle).ToRotation() + adjust;
             AdditionalAI();
+            State.AdditionalAI();
             if (!Projectile.active)
                 return;
-            OldPlayerOffset = Projectile.Center - player.MountedCenter;
-            player.itemTime = ExistsTime + 2 - TotalTimer;
-            player.itemAnimation = ExistsTime + 2 - TotalTimer;
-            if (TotalTimer > ExistsTime)
+            OldPlayerOffset = Projectile.Center - Player.MountedCenter;
+            Player.itemTime++;
+            Player.itemAnimation++;
+            Projectile.timeLeft++;
+            StateTimer++;
+            Timer++;
+            if (StateTimer >= StateMaxTime)
             {
-                player.itemTime = 0;
-                player.itemAnimation = 0;
-                Projectile.Kill();
-            }
-            TotalTimer++;
-            if (TotalTimer >= StartupTime && TotalTimer < StartupTime + SwingTime)
-            {
-                SwingTimer++;
+                if (State.Loops)
+                    SetState(State);
+                else
+                {
+                    int stateIndex = StateList.FindIndex(state => state == State);
+                    while (true)
+                    {
+                        if (stateIndex + 1 >= StateList.Count)
+                        {
+                            Player.itemTime = 0;
+                            Player.itemAnimation = 0;
+                            Projectile.Kill();
+                            return;
+                        }
+
+                        if (!StateList[stateIndex + 1].IsTransitionedTo)
+                        {
+                            stateIndex++;
+                            continue;
+                        }
+
+                        SetState(StateList[stateIndex + 1]);
+                        break;
+                    }
+                }
             }
             Vector2 armDir = armCenter - Projectile.Center;
-            armDir.Y *= player.gravDir;
-            player.SetCompositeArmFront(true, Player.CompositeArmStretchAmount.Full, armDir.ToRotation() + MathHelper.ToRadians(90));
-            oldScale.Insert(0, Projectile.scale);
+            armDir.Y *= Player.gravDir;
+            Player.SetCompositeArmFront(true, Player.CompositeArmStretchAmount.Full, armDir.ToRotation() + MathHelper.ToRadians(90));
+            OldScale.Insert(0, Projectile.scale);
         }
         public override bool PreDraw(ref Color lightColor)
         {
-
-            Player player = Main.player[Projectile.owner];
-            if (AfterImageLength > 0)
+            if (AfterImageCount > 0)
             {
                 Texture2D texture = TextureAssets.Projectile[Type].Value ;
-                for (int i = 0; i < oldProjectileRot.Count; i++)
+                for (int i = 0; i < OldProjectileRot.Count; i++)
                 {
-                    var col = Projectile.Opacity * (i / (float)AfterImageLength) * 0.1f;
-                    if (Projectile.spriteDirection == 1)
-                    {
-                        Main.EntitySpriteDraw(texture, oldProjectilePos[i] - Main.screenPosition, null, AfterImageColor * col, oldProjectileRot[i], texture.Size() / 2, oldScale[i], SpriteEffects.None, 0);
-                    }
-                    else
-                    {
-                        Main.EntitySpriteDraw(texture, oldProjectilePos[i] - Main.screenPosition, null, AfterImageColor * col, oldProjectileRot[i], texture.Size() / 2, oldScale[i], SpriteEffects.FlipHorizontally, 0);
-                    }
+                    var col = Projectile.Opacity * (i / (float)AfterImageCount) * 0.1f;
+                    Main.EntitySpriteDraw(texture, OldProjectilePos[i] - Main.screenPosition, null,
+                        AfterImageColor * col, OldProjectileRot[i], texture.Size() / 2, OldScale[i],
+                        Projectile.spriteDirection == 1 ? SpriteEffects.None : SpriteEffects.FlipHorizontally);
                 }
             }
-            Main.player[Projectile.owner].heldProj = Projectile.whoAmI;
+            Player.heldProj = Projectile.whoAmI;
             return true;
         }
         public override void ModifyDamageHitbox(ref Rectangle hitbox)
@@ -395,33 +435,26 @@ namespace RootsCore.ContentBaseClasses
             var center = hitbox.Center.ToVector2();
             hitbox.Height = (int)(Projectile.height * Projectile.scale);
             hitbox.Width = (int)(Projectile.width * Projectile.scale);
-            hitbox.Location = (center - new Vector2(hitbox.Width / 2, hitbox.Height / 2)).ToPoint();
-
+            hitbox.Location = (center - new Vector2(hitbox.Width * 0.5f, hitbox.Height * 0.5f)).ToPoint();
         }
 
         public override bool? Colliding(Rectangle projHitbox, Rectangle targetHitbox)
         {
-            if (LineCollisionLength > 0)
-            {
-                Player player = Main.player[Projectile.owner];
-                Vector2 armcenter = player.MountedCenter - new Vector2(5 * player.direction, 2);
-                Vector2 swordDir = armcenter.DirectionTo(Projectile.Center);
-                Vector2 collisionline = new Vector2(LineCollisionLength / 2f, 0).RotatedBy(swordDir.ToRotation()) * Projectile.scale;
-                bool c = Collision.CheckAABBvLineCollision(targetHitbox.Location.ToVector2(), targetHitbox.Size(), Projectile.Center, Projectile.Center + collisionline);
-                if (c && !float.IsNaN(collisionline.X) && !float.IsNaN(collisionline.Y))
-                    return true;
-            }
+            if (!(LineCollisionLength > 0)) return base.Colliding(projHitbox, targetHitbox);
+            Vector2 armCenter = Player.MountedCenter - new Vector2(5 * Player.direction, 2);
+            Vector2 swordDir = armCenter.DirectionTo(Projectile.Center);
+            Vector2 collisionLine = new Vector2(LineCollisionLength / 2f, 0).RotatedBy(swordDir.ToRotation()) * Projectile.scale;
+            bool collided = Collision.CheckAABBvLineCollision(targetHitbox.Location.ToVector2(), targetHitbox.Size(), Projectile.Center, Projectile.Center + collisionLine);
+            if (collided && !float.IsNaN(collisionLine.X) && !float.IsNaN(collisionLine.Y))
+                return true;
             return base.Colliding(projHitbox, targetHitbox);
         }
         public override void ModifyHitNPC(NPC target, ref NPC.HitModifiers modifiers)
         {
-            modifiers.HitDirectionOverride = ((Main.player[Projectile.owner].DirectionTo(target.Center)).X >= 0 ? 1 : -1);
+            modifiers.HitDirectionOverride = Player.DirectionTo(target.Center).X >= 0 ? 1 : -1;
         }
 
-        public override bool? CanDamage()
-        {
-            return InSwing;
-        }
+        public override bool? CanDamage() => State.CanDamage;
 
         public override void SendExtraAI(BinaryWriter writer)
         {
@@ -437,12 +470,62 @@ namespace RootsCore.ContentBaseClasses
         {
             if (target.noTileCollide)
                 return null;
-            if (!Collision.CanHit(Main.player[Projectile.owner], target))
+            if (!Collision.CanHit(Player, target))
                 return false;
 
             return null;
         }
         #endregion
+
+        public void SetState(AttackState state)
+        {
+            bool shouldStart = state != State;
+            State = state;
+            StateMaxTime = State.Time;
+            StateTimer = 0;
+            Angle = State.Angle ?? Angle;
+
+            AfterImageCount = State.AfterImageCount;
+            
+            Projectile.velocity = Vector2.Zero;
+            
+            if (Angle.X < 0)
+            {
+                Player.direction = 1;
+                Projectile.spriteDirection = 1 * (int)Player.gravDir;
+            }
+            else
+            {
+                Player.direction = -1;
+                Projectile.spriteDirection = -1 * (int)Player.gravDir;
+            }
+            if (AlternateSwings && ModPlayer.SwingCounter % 2 == 1)
+                Projectile.spriteDirection *= -1;
+                
+            StateMaxTime *= Projectile.MaxUpdates;
+            if (UseAttackSpeed)
+            {
+                var speed = Player.GetTotalAttackSpeed(Projectile.DamageType);
+                if (speed > 3f)
+                    speed = 3f;
+
+                if (speed != 0f)
+                    speed = 1f / speed;
+
+                StateMaxTime = Math.Max((int)(StateMaxTime * speed), 1);
+            }
+
+            OffsetDistance = State.OffsetDistance;
+            
+            if (shouldStart)
+            {
+                State.Startup();
+                if (State.Sound != null)
+                    SoundEngine.PlaySound((SoundStyle)State.Sound, Player.Center);
+            }
+
+            Projectile.netUpdate = true;
+        }
     }
 
 }

@@ -351,7 +351,7 @@ namespace RootsCore.ContentBaseClasses
                 Projectile.spriteDirection = -1 * (int)Player.gravDir;
             }
             
-            if (AlternateSwings && ModPlayer.SwingCounter % 2 == 1)
+            if (AlternateSwings && ModPlayer.SwingCounter % 2 == 0)
             {
                 Projectile.spriteDirection *= -1;
             }
@@ -509,7 +509,7 @@ namespace RootsCore.ContentBaseClasses
                 Player.direction = -1;
                 Projectile.spriteDirection = -1 * (int)Player.gravDir;
             }
-            if (AlternateSwings && ModPlayer.SwingCounter % 2 == 1)
+            if (AlternateSwings && ModPlayer.SwingCounter % 2 == 0)
                 Projectile.spriteDirection *= -1;
                 
             StateMaxTime *= Projectile.MaxUpdates;

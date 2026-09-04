@@ -215,19 +215,6 @@ namespace RootsCore
                 else
                     ExcludePlayerLogic(box);
             }
-            if (!Main.gameMenu && ArenaSystem.ActiveBoxes.Count < 1) 
-            {
-                
-                ArenaSystem.ActiveBoxes.Add(new ArenaSystem.Box
-                {
-                    Position = Main.LocalPlayer.Center - new Vector2(0, 500),
-                    BoxDimensions = new Vector4(100, 100, 100, 100),
-                    UpdateBox = (box) => {
-                        box.BoxDimensions = new Vector4(100, 500, 100, 100);
-                        box.BorderThickness = 0;
-                    }
-                });
-            }
         }
 
         private void ExcludePlayerLogic(ArenaSystem.Box box)

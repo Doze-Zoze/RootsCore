@@ -431,7 +431,7 @@ namespace RootsCore.ContentBaseClasses
                 {
                     var col = Projectile.Opacity * (i / (float)AfterImageCount) * 0.1f;
                     Main.EntitySpriteDraw(texture, OldProjectilePos[i] - Main.screenPosition, null,
-                        AfterImageColor * col, OldProjectileRot[i], texture.Size() / 2, OldScale[i],
+                        AfterImageColor * col, OldProjectileRot[i], texture.Size() * 0.5f, OldScale[i],
                         Projectile.spriteDirection == 1 ? SpriteEffects.None : SpriteEffects.FlipHorizontally);
                 }
             }

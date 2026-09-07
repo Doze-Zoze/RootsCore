@@ -297,7 +297,7 @@ namespace RootsCore.ContentBaseClasses
         }
         public override void SetStaticDefaults()
         {
-
+            ProjectileID.Sets.AllowsContactDamageFromJellyfish[Projectile.type] = true;
             ProjectileID.Sets.TrailingMode[Projectile.type] = 2;
             ProjectileID.Sets.TrailCacheLength[Projectile.type] = 100;
         }

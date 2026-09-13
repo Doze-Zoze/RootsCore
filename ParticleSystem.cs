@@ -78,7 +78,7 @@ namespace RootsCore
             public Vector2 Velocity = Vector2.Zero;
             public float Rotation;
             /// <summary>
-            /// Defaults to <code>Color.White with { A = 0 }</code>
+            /// Defaults to <c>Color.White with { A = 0 }</c><br/>
             /// This draws it as an additive white
             /// </summary>
             public Color Color = Color.White with { A = 0 };

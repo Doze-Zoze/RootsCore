@@ -96,7 +96,7 @@ namespace RootsCore
             public Action<Particle> CustomDrawLogic { get; set; }
             public DrawLayerSystem.DrawLayer DrawLayer = DrawLayerSystem.DrawLayer.AfterDusts;
         }
-        public static List<Particle> Particles = [];
+        public static readonly List<Particle> Particles = [];
 
         //TODO - Config for the size of the cap
         public const int MaxParticles = 1000;

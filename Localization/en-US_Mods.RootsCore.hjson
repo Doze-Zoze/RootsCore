@@ -1,1 +1,10 @@
+Configs: {
+	RootsCoreConfig: {
+		DisplayName: Roots Core Config
 
+		MaximumParticleCount: {
+			Label: Maximum Particle Count
+			Tooltip: "The maximum number of particles that can be displayed at once"
+		}
+	}
+}

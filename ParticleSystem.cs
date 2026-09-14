@@ -3,18 +3,20 @@ using Microsoft.Xna.Framework.Graphics;
 using ReLogic.Content;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Terraria;
 using Terraria.ModLoader;
 using static RootsCore.ParticleSystem;
 
 namespace RootsCore
 {
-    public class ParticlePresets {
+    public class ParticlePresets
+    {
 
         public static ParticleBehaviorPreset LinearShrink { get; } = new()
         {
-        UpdateLogic = (particle) =>
-            particle.Scale = new Vector2(1 - particle.TimeAlive / (float)particle.MaxLifetime) * particle.BaseScale
+            UpdateLogic = (particle) =>
+                particle.Scale = new Vector2(1 - particle.TimeAlive / (float)particle.MaxLifetime) * particle.BaseScale
         };
         public static ParticleBehaviorPreset LinearFade { get; } = new()
         {
@@ -23,14 +25,16 @@ namespace RootsCore
         };
         public static ParticleBehaviorPreset LinearShrinkAndFade { get; } = new()
         {
-            UpdateLogic = (particle) => {
+            UpdateLogic = (particle) =>
+            {
                 particle.Scale = new Vector2(1 - particle.TimeAlive / (float)particle.MaxLifetime) * particle.BaseScale;
                 particle.Opacity = (1 - particle.TimeAlive / (float)particle.MaxLifetime) * particle.BaseOpacity;
-                }
+            }
         };
         public static ParticleBehaviorPreset ExplodeAndFade { get; } = new()
         {
-            UpdateLogic = (particle) => {
+            UpdateLogic = (particle) =>
+            {
                 particle.Scale = new Vector2(RootsCoreUtils.Ease.OutExpo(particle.TimeAlive / (float)particle.MaxLifetime)) * particle.BaseScale;
                 particle.Opacity = RootsCoreUtils.Ease.OutBack(1 - particle.TimeAlive / (float)particle.MaxLifetime) * particle.BaseOpacity;
             }
@@ -91,19 +95,19 @@ namespace RootsCore
             public float BaseOpacity = 1f;
             public int MaxLifetime;
             public int TimeAlive;
+            public bool Pixelate = true;
             public bool UseTileLighting = false;
             public Action<Particle> UpdateLogic { get; set; }
             public Action<Particle> CustomDrawLogic { get; set; }
             public DrawLayerSystem.DrawLayer DrawLayer = DrawLayerSystem.DrawLayer.AfterDusts;
         }
         public static readonly List<Particle> Particles = [];
+        private static RenderTarget2D PixelizationTarget;
 
-        //TODO - Config for the size of the cap
-        public const int MaxParticles = 1000;
-
-        public static void SpawnParticle(Particle particle) {
+        public static void SpawnParticle(Particle particle)
+        {
             Particles.Add(particle);
-            while (Particles.Count > MaxParticles)
+            while (Particles.Count > RootsCoreConfig.Instance.MaximumParticleCount)
             {
                 Particles.RemoveAt(0);
             }
@@ -111,11 +115,20 @@ namespace RootsCore
         public override void Load()
         {
             DrawLayerSystem.DrawToLayer += DrawParticles;
+            Main.QueueMainThreadAction(() => new RenderTarget2D(Main.graphics.GraphicsDevice, Main.screenWidth / 2, Main.screenHeight / 2, false, SurfaceFormat.Color, DepthFormat.None, 0, RenderTargetUsage.DiscardContents));
+
+        }
+
+        public override void Unload()
+        {
+            if (!PixelizationTarget.IsDisposed)
+                PixelizationTarget.Dispose();
+            PixelizationTarget = null;
         }
 
         public override void PostUpdateDusts()
         {
-            while (Particles.Count > MaxParticles)
+            while (Particles.Count > RootsCoreConfig.Instance.MaximumParticleCount)
             {
                 Particles.RemoveAt(0);
             }
@@ -129,7 +142,8 @@ namespace RootsCore
                     i--;
                     continue;
                 }
-                if (particle.TimeAlive == 0) {
+                if (particle.TimeAlive == 0)
+                {
                     particle.BaseScale = particle.Scale;
                     particle.BaseOpacity = particle.Opacity;
                 }
@@ -141,28 +155,82 @@ namespace RootsCore
 
         public static void DrawParticles(DrawLayerSystem.DrawLayer layer)
         {
-            Main.spriteBatch.Begin(SpriteSortMode.Deferred,BlendState.AlphaBlend,null,null,null,null,Main.GameViewMatrix.TransformationMatrix);
+            if (Particles.All(x => x.DrawLayer != layer))
+                return;
+            EnsureRenderTargetSize();
+            var graphicsDevice = Main.spriteBatch.GraphicsDevice;
+            var translationMatrix = Matrix.CreateTranslation(-Main.screenPosition.X, -Main.screenPosition.Y, 0);
+            var halfSizeMatrix = Matrix.CreateScale(0.5f, 0.5f, 1.0f);
+
+
+            var rtbindings = graphicsDevice.GetRenderTargets();
+            graphicsDevice.SetRenderTarget(PixelizationTarget);
+            graphicsDevice.Clear(Color.Transparent);
+            Main.spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, null, null, null, null, halfSizeMatrix);
             for (int i = 0; i < Particles.Count; i++)
             {
                 var particle = Particles[i];
-                if (layer != particle.DrawLayer) continue;
-
-                if (particle.CustomDrawLogic is not null)
-                {
-                    particle.CustomDrawLogic.Invoke(particle);
-                    continue;
-                }
-
-                Color drawColor = particle.Color;
-                if (particle.UseTileLighting)
-                {
-                    Color lightColor = Lighting.GetColor(particle.Position.ToTileCoordinates());
-                    drawColor = Color.FromNonPremultiplied(drawColor.ToVector4() * lightColor.ToVector4());
-                }
-                Main.EntitySpriteDraw(particle.Texture.Value, particle.Position - Main.screenPosition, particle.Frame, drawColor * particle.Opacity, particle.Rotation, particle.Origin, particle.Scale, default);
+                if (layer != particle.DrawLayer || !particle.Pixelate) continue;
+                DrawParticle(particle);
             }
+
+            Main.spriteBatch.End();
+            foreach (var binding in rtbindings)
+            {
+                if (binding.RenderTarget is not RenderTarget2D rt)
+                    continue;
+
+                rt.RenderTargetUsage = RenderTargetUsage.PreserveContents;
+            }
+
+            graphicsDevice.SetRenderTargets(rtbindings);
+
+            Main.spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, null, null, null, Main.Transform);
+            for (int i = 0; i < Particles.Count; i++)
+            {
+                var particle = Particles[i];
+                if (layer != particle.DrawLayer || particle.Pixelate) continue;
+                DrawParticle(particle);
+            }
+            Main.spriteBatch.Draw(PixelizationTarget, Vector2.Zero, null, Color.White, 0, Vector2.Zero, 2, 0, 0);
             Main.spriteBatch.End();
 
+
+        }
+        private static void DrawParticle(Particle particle)
+        {
+            if (particle.CustomDrawLogic is not null)
+            {
+                particle.CustomDrawLogic.Invoke(particle);
+                return;
+            }
+
+            Color drawColor = particle.Color;
+            if (particle.UseTileLighting)
+            {
+                Color lightColor = Lighting.GetColor(particle.Position.ToTileCoordinates());
+                drawColor = Color.FromNonPremultiplied(drawColor.ToVector4() * lightColor.ToVector4());
+            }
+            Main.spriteBatch.Draw(particle.Texture.Value, particle.Position - Main.screenPosition, particle.Frame, drawColor * particle.Opacity, particle.Rotation, particle.Origin, particle.Scale, 0, 0);
+        }
+
+        public static void EnsureRenderTargetSize()
+        {
+            int width = Main.screenWidth / 2;
+            int height = Main.screenHeight / 2;
+
+            if (PixelizationTarget is null)
+            {
+                PixelizationTarget = new RenderTarget2D(Main.graphics.GraphicsDevice, width, height, false, SurfaceFormat.Color, DepthFormat.None, 0, RenderTargetUsage.PreserveContents);
+                return;
+            }
+
+            if (PixelizationTarget.Width == width && PixelizationTarget.Height == height)
+                return;
+
+            if (!PixelizationTarget.IsDisposed)
+                PixelizationTarget.Dispose();
+            PixelizationTarget = new RenderTarget2D(Main.graphics.GraphicsDevice, width, height, false, SurfaceFormat.Color, DepthFormat.None, 0, RenderTargetUsage.PreserveContents);
         }
     }
 }

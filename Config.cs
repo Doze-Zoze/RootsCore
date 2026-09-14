@@ -10,7 +10,7 @@ namespace RootsCore
 
         public static RootsCoreConfig Instance => ModContent.GetInstance<RootsCoreConfig>();
 
-        [DefaultValue(10000)]
+        [DefaultValue(2500)]
         public int MaximumParticleCount;
     }
 }

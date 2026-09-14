@@ -132,7 +132,7 @@ namespace RootsCore
             {
                 Particles.RemoveAt(0);
             }
-
+            
             for (var i = 0; i < Particles.Count; i++)
             {
                 var particle = Particles[i];
@@ -151,6 +151,7 @@ namespace RootsCore
                 particle.Position += particle.Velocity;
                 particle.TimeAlive++;
             }
+            lightingCache.Clear();
         }
 
         public static void DrawParticles(DrawLayerSystem.DrawLayer layer)
@@ -208,10 +209,19 @@ namespace RootsCore
             Color drawColor = particle.Color;
             if (particle.UseTileLighting)
             {
-                Color lightColor = Lighting.GetColor(particle.Position.ToTileCoordinates());
+                Color lightColor = GetCachedLightingColor(particle.Position.ToTileCoordinates());
                 drawColor = Color.FromNonPremultiplied(drawColor.ToVector4() * lightColor.ToVector4());
             }
             Main.spriteBatch.Draw(particle.Texture.Value, particle.Position - Main.screenPosition, particle.Frame, drawColor * particle.Opacity, particle.Rotation, particle.Origin, particle.Scale, 0, 0);
+        }
+        private static Dictionary<Point, Color> lightingCache = [];
+        public static Color GetCachedLightingColor(Point point) 
+        {
+            if (lightingCache.TryGetValue(point, out Color color))
+                return color;
+            color = Lighting.GetColor(point);
+            lightingCache[point] = color;
+            return color;
         }
 
         public static void EnsureRenderTargetSize()

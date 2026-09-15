@@ -6,5 +6,15 @@ Configs: {
 			Label: Maximum Particle Count
 			Tooltip: The maximum number of particles that can be displayed at once
 		}
+
+		DisableParticleSpecialEffects: {
+			Label: Disable Particle Special Effects
+			Tooltip: Disables various particle special effects, such as pixelation, to improve performance
+		}
+
+		DisableParticleTileLighting: {
+			Label: Disable Particle Tile Lighting
+			Tooltip: Stops particles from drawing using tile lighting to improve performance
+		}
 	}
 }

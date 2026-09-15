@@ -12,5 +12,11 @@ namespace RootsCore
 
         [DefaultValue(2500)]
         public int MaximumParticleCount;
+
+        [DefaultValue(false)]
+        public bool DisableParticleSpecialEffects;
+
+        [DefaultValue(false)]
+        public bool DisableParticleTileLighting;
     }
 }

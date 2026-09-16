@@ -27,7 +27,7 @@ namespace RootsCore.ParticleSystem
         /// This can be used to apply effects to the render target<br/>
         /// Prevents ApplyEffectsToDraw from being called when set
         /// </summary>
-        public Action CustomDrawAction;partial 
+        public Action CustomDrawAction; 
         public RenderTarget2D BatchTarget = null; //TODO - render target pooling
     }
 

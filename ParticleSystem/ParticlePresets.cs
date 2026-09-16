@@ -3,19 +3,32 @@ using System;
 
 namespace RootsCore.ParticleSystem
 {
+/// <summary>
+/// Defines preset data for a Particle to spawn with, which can then be edited further in the particle's object initializer<br/>
+/// All fields and properties work the same as <see cref="Particle"/>, but are nullable and null by default
+/// </summary>
     public class ParticlePreset
     {
         #region Presets
+        /// <summary>
+        /// Causes the particle to shrink linearly as it's lifetime expires
+        /// </summary>
         public static ParticlePreset LinearShrink { get; } = new()
         {
             UpdateLogic = (particle) =>
                 particle.Scale = new Vector2(1 - particle.TimeAlive / (float)particle.MaxLifetime) * particle.BaseScale
         };
+        /// <summary>
+        /// Causes the particle to fade opacity linearly as it's lifetime expires
+        /// </summary>
         public static ParticlePreset LinearFade { get; } = new()
         {
             UpdateLogic = (particle) =>
                 particle.Opacity = (1 - particle.TimeAlive / (float)particle.MaxLifetime) * particle.BaseOpacity
         };
+        /// <summary>
+        /// Causes the particle to shrink and fade opacity linearly as it's lifetime expires
+        /// </summary>
         public static ParticlePreset LinearShrinkAndFade { get; } = new()
         {
             UpdateLogic = (particle) =>
@@ -24,6 +37,9 @@ namespace RootsCore.ParticleSystem
                 particle.Opacity = (1 - particle.TimeAlive / (float)particle.MaxLifetime) * particle.BaseOpacity;
             }
         };
+        /// <summary>
+        /// Causes particle to scale in quickly to full size and then fade opacity out
+        /// </summary>
         public static ParticlePreset ExplodeAndFade { get; } = new()
         {
             UpdateLogic = (particle) =>

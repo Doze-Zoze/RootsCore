@@ -118,4 +118,6 @@ public static class RootsCoreUtils
             return 1 - InBounce((1 - t) * 2) / 2;
         }
     }
+
+    public static string InvisiblePixelPath => "RootsCore/MiscTextures/InvisiblePixel";
 }

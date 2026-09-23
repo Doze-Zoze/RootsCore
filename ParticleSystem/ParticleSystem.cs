@@ -1,7 +1,6 @@
 ﻿using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using System.Collections.Generic;
-using System.Security.Principal;
 using Terraria;
 using Terraria.ModLoader;
 
@@ -16,17 +15,19 @@ namespace RootsCore.ParticleSystem
         }
         public override void Unload()
         {
-            while (_nonPixelatedRTPool.Count > 0)
-                _nonPixelatedRTPool.Pop().Dispose();
-
-            while (_pixelatedRTPool.Count > 0)
-                _pixelatedRTPool.Pop().Dispose();
-            while (_rentedRTs.Count > 0)
+            Main.QueueMainThreadAction(() =>
             {
-                _rentedRTs[0].Dispose();
-                _rentedRTs.RemoveAt(0);
-            }
+                while (_nonPixelatedRTPool.Count > 0)
+                    _nonPixelatedRTPool.Pop().Dispose();
 
+                while (_pixelatedRTPool.Count > 0)
+                    _pixelatedRTPool.Pop().Dispose();
+                while (_rentedRTs.Count > 0)
+                {
+                    _rentedRTs[0].Dispose();
+                    _rentedRTs.RemoveAt(0);
+                }
+            });
         }
         #endregion
 
@@ -106,23 +107,31 @@ namespace RootsCore.ParticleSystem
             while (Particles.Count > RootsCoreConfig.Instance.MaximumParticleCount)
                 KillParticle(0);
 
-            for (var i = 0; i < Particles.Count; i++)
+            try
             {
-                var particle = Particles[i];
-                if (particle.TimeAlive >= particle.MaxLifetime)
+                for (var i = 0; i < Particles.Count; i++)
                 {
-                    KillParticle(particle);
-                    i--;
-                    continue;
+                    var particle = Particles[i];
+                    if (particle.TimeAlive >= particle.MaxLifetime)
+                    {
+                        KillParticle(particle);
+                        i--;
+                        continue;
+                    }
+                    if (particle.TimeAlive == 0)
+                    {
+                        particle.BaseScale = particle.Scale;
+                        particle.BaseOpacity = particle.Opacity;
+                    }
+                    particle.UpdateLogic?.Invoke(particle);
+                    particle.Position += particle.Velocity;
+                    particle.TimeAlive++;
                 }
-                if (particle.TimeAlive == 0)
-                {
-                    particle.BaseScale = particle.Scale;
-                    particle.BaseOpacity = particle.Opacity;
-                }
-                particle.UpdateLogic?.Invoke(particle);
-                particle.Position += particle.Velocity;
-                particle.TimeAlive++;
+            }
+            catch
+            {
+                Particles.Clear();
+                BatchedDrawList.Clear();
             }
             _lightingCache.Clear();
         }
@@ -134,7 +143,7 @@ namespace RootsCore.ParticleSystem
         private static readonly Stack<RenderTarget2D> _pixelatedRTPool = new();
         private static readonly List<RenderTarget2D> _rentedRTs = [];
 
-        internal static RenderTarget2D RentParticleTarget(bool pixelated)
+        public static RenderTarget2D RentParticleTarget(bool pixelated)
         {
             var pool = pixelated ? _pixelatedRTPool : _nonPixelatedRTPool;
 
@@ -154,7 +163,7 @@ namespace RootsCore.ParticleSystem
             return target;
         }
 
-        internal static void ReturnParticleTarget(RenderTarget2D target, bool pixelated)
+        public static void ReturnParticleTarget(RenderTarget2D target, bool pixelated)
         {
             var pool = pixelated ? _pixelatedRTPool : _nonPixelatedRTPool;
             pool.Push(target);
@@ -212,7 +221,7 @@ namespace RootsCore.ParticleSystem
                 rt.RenderTargetUsage = RenderTargetUsage.PreserveContents;
             }
             graphicsDevice.SetRenderTargets(rtbindings);
-            
+
             //Now we draw each batch's RenderTarget back to the screen, then return that batch's target to the pool as it is no longer needed
             Main.spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, null, null, null, Main.Transform);
             foreach (var batchKVP in layerBatch)
@@ -246,7 +255,7 @@ namespace RootsCore.ParticleSystem
                 ReturnParticleTarget(batch.BatchTarget, batch.Pixelate);
                 batch.BatchTarget = null;
             }
-                Main.spriteBatch.End();
+            Main.spriteBatch.End();
         }
         private static void DrawParticle(Particle particle)
         {

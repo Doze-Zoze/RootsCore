@@ -176,7 +176,7 @@ namespace RootsCore.ParticleSystem
         internal static readonly Dictionary<DrawLayerSystem.DrawLayer, Dictionary<ParticleDrawBatch, List<Particle>>> BatchedDrawList = [];
         public static void DrawParticles(DrawLayerSystem.DrawLayer layer)
         {
-            if (!BatchedDrawList.ContainsKey(layer))
+            if (!BatchedDrawList.TryGetValue(layer, out Dictionary<ParticleDrawBatch, List<Particle>> layerBatch))
                 return;
 
             //This draws all particles directly to screen, bypassing all rendertarget effects
@@ -191,7 +191,6 @@ namespace RootsCore.ParticleSystem
                 return;
             }
 
-            var layerBatch = BatchedDrawList[layer];
             var graphicsDevice = Main.spriteBatch.GraphicsDevice;
             var halfSizeMatrix = Matrix.CreateScale(0.5f, 0.5f, 1.0f);
             var rtbindings = graphicsDevice.GetRenderTargets(); //Stores current RTs to reapply later
